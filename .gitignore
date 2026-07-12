@@ -1,0 +1,25 @@
+# Internal working docs — not part of the public release
+CLAUDE.md
+PLAN.md
+.claude/
+
+# Proprietary / large firmware dumps — must never be published
+*.rom
+vbios_*
+
+# Vendored OpenRGB source tree — referenced for integration, not shipped here
+OpenRGB/
+
+# Scratch / experimental parsing scripts
+vbios_parse*.py
+*.msix
+
+# Build artifacts
+*.o
+*.ii
+*.s
+*.a
+
+# Editor / OS
+*.swp
+.DS_Store
