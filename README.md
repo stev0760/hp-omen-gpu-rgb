@@ -34,6 +34,14 @@ the card is detected and controlled there natively.
 | Controller | on-board I2C device at `0x49` (7-bit), on the GPU's I2C bus |
 | Tested on | ASRock X570 Pro4, Arch Linux, kernel 7.0.x-zen, NVIDIA open 595.x |
 
+> ⚠️ **Tested scope.** Everything in this repo is confirmed on **one card
+> only**: the HP Omen RTX 4080 SUPER (`103c:8cfd`). HP sells a range of
+> Omen-branded NVIDIA GPUs that very likely share the same on-board RGB
+> controller and protocol, so this should be **extensible to other HP Omen GPU
+> SKUs** — but those have **not** been verified. If you have a different HP
+> Omen GPU, please test and report back (see *Contributing* below); until then,
+> treat the protocol as RTX-4080-SUPER-confirmed and otherwise unverified.
+
 ## Quick start
 
 You need `i2c-tools` and the `i2c-dev` / `i2c_nvidia` modules loaded so the GPU
@@ -114,6 +122,22 @@ update category ID, decompiled the .NET assemblies with `ilspycmd`, disassembled
 the native `NvidiaApi.dll` with `objdump`, and byte-verified the I2C command
 headers and struct layout. Then replayed the exact transaction on Linux with
 `i2ctransfer`. Full method in [`PROTOCOL.md`](PROTOCOL.md) §3.
+
+## Contributing
+
+The most useful thing you can add is a **second confirmed SKU**. If you have an
+HP Omen GPU that isn't the RTX 4080 SUPER:
+
+1. Confirm the controller is at `0x49` on one of the GPU I2C busses
+   (`i2cdetect -y <bus>` — read-only, safe).
+2. Try `diamond.sh` and report whether static colors / off work.
+3. Note your PCI subsystem `vendor:device` (`lspci -nn -d 10de:`) so it can be
+   added as another `REGISTER_I2C_PCI_DETECTOR` entry upstream.
+
+Please open an issue with the results. Confirmed-working SKUs get folded into
+the OpenRGB integration (see [`openrgb-integration.md`](openrgb-integration.md))
+as additional PCI ID pairs — no new controller code needed if the protocol
+matches.
 
 ## License
 
