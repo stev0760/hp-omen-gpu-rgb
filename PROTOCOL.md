@@ -53,8 +53,9 @@ Hard rules:
 4. Confirm the exact command and target address before any I2C write.
 5. Back up the VBIOS (`nvflash --save` from Windows) before any write
    experiments. Writing a flash EEPROM is the one unrecoverable mistake;
-   RGB-controller writes are recoverable via a full **PSU power-cycle**
-   (switch off, wait for caps to drain, switch on).
+   RGB-controller writes are recoverable by simply committing a new
+   state (see §9 — the state is NVRAM-persistent, so a PSU power-cycle
+   does *not* reset it).
 
 `i2cdetect` will show `0x49` responding on `i2c-3`. On a naive byte-read it
 returns all `0xff` — that is **not** a dead device; it is the signature of a
@@ -288,11 +289,22 @@ bare reads return to `0xff` until the next write-then-read.
 
 ---
 
-## 9. Recovery
+## 9. Recovery and persistence
 
-RGB-controller writes are **recoverable**. If a bad write leaves the diamond in
-an unwanted state: issue `off` (`LedMode=5`). If the controller becomes
-unresponsive or latched in a bad way: a **full PSU power-cycle** (power off,
-wait for capacitors to drain, power on) restores the factory walking-rainbow
-default. Do **not** confuse this with VBIOS writes — those are not recoverable
-this way, hence rule 5 in §2.
+RGB-controller writes are **recoverable**: any unwanted state is fixed by
+simply writing a new one (e.g. `off`, `LedMode=5`) — a committed set-lighting
+write always takes effect. Do **not** confuse this with VBIOS writes — those
+are not recoverable this way, hence rule 5 in §2.
+
+**The committed state is persistent (NVRAM).** Verified 2026-07-18: a full
+power-down — PSU switched off, power button held to discharge, ~15–20 s wait —
+did **not** reset the diamond; it came back showing the last committed state.
+The controller stores its state in non-volatile memory, so a color set once
+survives cold boots with no software running on any OS.
+
+Consequently the factory walking rainbow is **not** restored by a PSU
+power-cycle once a properly committed state exists. (Early notes claimed it
+was — but those observations predate the write-then-read commit: lone writes
+froze the rainbow without durably committing anything, so power loss discarded
+them. The rainbow appears to be the never-written factory default rather than
+a state the controller returns to.)

@@ -12,7 +12,8 @@
 #     [LedMode][Brightness][Speed][Monochrome]
 #     [En0 R0 G0 B0][En1 R1 G1 B1][En2 R2 G2 B2][En3 R3 G3 B3]
 # LedMode: 0=colorcycle 1=wave 2=blink 3=breathing 4=static 5=off.
-# regAddrSize=0 (no register byte). Recoverable via a full PSU power-cycle.
+# regAddrSize=0 (no register byte). State is NVRAM-persistent; recover from any
+# unwanted state by committing a new one (PSU power-cycle does NOT reset it).
 #
 # Commands:
 #   off                         LedMode=5
