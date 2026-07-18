@@ -14,6 +14,9 @@ OpenRGB/
 vbios_parse*.py
 *.msix
 
+# HP proprietary binaries + decompiled sources — reference only, never publish
+re/
+
 # Build artifacts
 *.o
 *.ii

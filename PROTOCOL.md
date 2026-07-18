@@ -113,8 +113,8 @@ immediately followed by a **4-byte read** (see §5 for why the read is mandatory
 |---|---|---|
 | 0 | `LedMode` | mode enum, see below |
 | 1 | `Brightness` | `0x00`–`0xff` (HP scales 0–100 → ×2.55) |
-| 2 | `Speed` | effect speed for animated modes; `0x00` for static |
-| 3 | `Monochrome` | `1` = all zones share one color; `0` = per-zone |
+| 2 | `Speed` | animated modes only; HP uses exactly `0x01`=slow, `0x03`=medium, `0x07`=fast (`LedRunSpeed` switch in `DucatiTriumphLightingControl.RestartLighting`); `0x00` for static |
+| 3 | `Monochrome` | `1` = ring shows one palette color at a time; `0` = palette spread spatially (HP sets `0` for static and for its rainbow Wave theme, `1` for all other animations) |
 | 4 | `LedEnable0` | zone 0 enable (`0`/`1`) |
 | 5 | `Red0` | |
 | 6 | `Green0` | |
@@ -126,18 +126,36 @@ immediately followed by a **4-byte read** (see §5 for why the read is mandatory
 | 16 | `LedEnable3` | zone 3 enable |
 | 17–19 | `Red3 Green3 Blue3` | |
 
-The diamond exposes 4 logical zones around the ring. For a solid whole-ring
-color, set all four zones' enable=1 and RGB to the same value, with
-`Monochrome=1`. (HP's exact single-zone path uses `Monochrome=0` and only
-zone 0 populated; whether per-zone addressing produces distinct sub-ring
-segments has not yet been split-tested — see §8.)
+**The four "zone" slots are an animation color palette, not fixed ring
+segments.** Decompiled `DucatiTriumphLightingControl.RestartLighting` fills
+slots 0..N-1 with the selected theme's color list (HP themes carry 2–3
+colors) and the firmware cycles/waves/blinks/breathes through the enabled
+slots. HP's static path populates **slot 0 only** with `Monochrome=0`.
+Whether static + `Monochrome=0` + multiple enabled slots lights distinct
+sub-ring segments is untested — see §8.
+
+HP's built-in theme palettes (embedded JSON resource
+`ColorCycleTheme.json` in `HP.Omen.Background.TuringBg.dll`):
+
+| Theme | Palette |
+|---|---|
+| Galaxy | `#FF0000 #00FF00 #0000FF` (the factory rainbow) |
+| Volcano | `#F9350F #F9980F #F9CE0F` |
+| Jungle | `#36F90F #A0C80F #F9BE0F` |
+| Ocean | `#0FF9F9 #0F0FF9 #840FF9` |
+| Unicorn | `#EC6EAD #CF4ED6 #6F48AA` |
+| Valorant | `#2424FF #FFFFFF` |
+
+Special case: **Wave + Galaxy is sent with `Monochrome=0`** (spatial
+rainbow — the factory look); every other theme/animation combination uses
+`Monochrome=1`.
 
 ### `LedMode` values
 
 | Value | Mode |
 |---|---|
-| `0` | color cycle (the factory "walking rainbow") |
-| `1` | wave |
+| `0` | color cycle (cycles the whole ring through the palette) |
+| `1` | wave (factory "walking rainbow" = wave + R/G/B palette + `Monochrome=0`) |
 | `2` | blink / strobe |
 | `3` | breathing |
 | `4` | static color |
@@ -167,16 +185,20 @@ i2ctransfer -y 3 w24@0x49 <24 payload bytes> r4@0x49
 ```
 
 This mirrors HP's native "poll until nonzero" loop. With the trailing read, the
-read channel returns real data for the first time:
+read channel returns real data for the first time. The response depends on the
+command written (full matrix hardware-verified 2026-07-18):
 
-```
-0x01 0x5a 0xfe 0xa5
-```
+| Transaction | 4-byte readback |
+|---|---|
+| set-lighting (`06 81 f9 7e` …) write-then-read | `01 5a fe a5` — "accepted" ack |
+| get-version (`07 81 f8 7e` …) write-then-read | `03 5b fc a4` — version word (see §7) |
+| bare read, no write in the same transaction | `ff ff ff ff` |
+| get-version on the phantom bus (see §8) | `77 77 77 77` — junk echo |
 
-This is a fixed status/ID word (constant across set-lighting, get-version, and
-bare reads). It is not the firmware version; the nonzero value is what satisfies
-HP's success check. Earlier probing only ever saw `0xff` because it never
-performed the write-then-read.
+The response is only armed **within** the write-then-read transaction
+(repeated START). A standalone `r4@0x49` normally reads `0xff`s — a
+post-write bare read returning `01 5a fe a5` was observed once on an earlier
+driver (610.43.02) but does not survive a GPU reset and must not be relied on.
 
 **This trailing read is required on every command.** `diamond.sh` does it by
 default (`RD=1`).
@@ -212,26 +234,56 @@ Header `07 81 f8 7e` followed by the 20-byte body recovered from the
 04 00 01 01   01 00 00 00   01 00 00 00   01 00 00 00   01 00 00 00
 ```
 
-then a 4-byte read. The readback on this card is still `0x01 0x5a 0xfe 0xa5`
-(the same fixed status word), so a distinct firmware-version decode is not yet
-confirmed — the meaningful "version" may require a different query body or a
-longer read. The set-lighting path does not depend on this.
+then a 4-byte read. The readback on this card is:
+
+```
+0x03 0x5b 0xfc 0xa4
+```
+
+This is a **distinct, stable version word**: it is returned repeatably, both
+before and immediately after set-lighting writes, and differs from the
+set-lighting ack (`01 5a fe a5`). Its field encoding is undecoded. (An early
+capture on driver 610.43.02 saw the probe answer `01 5a fe a5` instead —
+which of the two words a fresh probe returns appears to depend on controller
+state after a GPU reset, so identification probes should accept either.)
+
+**The get-version query is non-mutating**: hardware-verified (2026-07-18)
+that repeated getver transactions leave the displayed lighting completely
+untouched — the diamond held its static color throughout. It is therefore
+safe as a detection probe. Note the readback survives a warm reboot
+differently than the display state: after a GPU reset (driver reload, no
+standby-power loss) the diamond keeps showing its last-written state, but
+bare reads return to `0xff` until the next write-then-read.
 
 ---
 
 ## 8. Open questions
 
-- **Per-zone addressing.** All four zones set together (Monochrome=1) produces a
-  solid whole-ring color. Whether populating zones individually (Monochrome=0,
-  only some `LedEnable`=1) drives distinct sub-ring segments — or whether the
-  diamond is physically a single LED group that ignores zone separation — has
-  not been split-tested. Worth a quick `zone0 R G B` experiment.
-- **Animated modes.** Mode IDs 0–3 (color cycle / wave / blink / breathing) are
-  decoded from the struct but have **not** been driven and visually verified.
-  Speed and brightness scaling for each are unknown. Static + off are
-  confirmed; effects are a follow-up.
-- **Readback word meaning.** `0x01 0x5a 0xfe 0xa5` is constant; its fields are
-  undecoded. It is sufficient as an "accepted" sentinel.
+- **Per-zone static addressing.** The four slots are an animation *palette*
+  (see §4); HP's app never sets more than slot 0 in static mode. Whether
+  static + `Monochrome=0` + multiple enabled slots with different colors
+  lights distinct sub-ring segments (i.e. the firmware repurposes the palette
+  spatially, as it does for `Monochrome=0` wave) — or the extra slots are
+  ignored — needs a split-test: `raw 06 81 f9 7e 04 ff 00 00 01 ff 00 00
+  00 00 00 00 01 00 00 ff 00 00 00 00` (slot0 red + slot2 blue).
+- **Animated modes.** Semantics decoded from `DucatiTriumphLightingControl`:
+  palette in slots, speed ∈ {1, 3, 7}, brightness 255, `Monochrome=1`
+  (except rainbow wave). Early tests that sent speed=50 and an all-black or
+  single-color 4-slot palette showed only breathing working — consistent
+  with the decode; visual verification with correct packets is in progress.
+  Whether speed bytes other than 1/3/7 are valid is untested.
+- **The phantom bus.** One of the GPU's I2C busses (observed at `i2c-7`,
+  "NVIDIA i2c adapter 5") ACKs writes at **every** address and echoes junk on
+  reads (`77 77 77 77` to the getver probe). Any scanner or detector must
+  identify the real controller by an exact response word, not by ACK — on
+  this card only the ack `01 5a fe a5` / version word `03 5b fc a4` qualify.
+- **Readback word meaning.** The set-lighting ack `01 5a fe a5` and version
+  word `03 5b fc a4` are undecoded (curiosity: they XOR to `02 01 02 01`).
+  They are sufficient as "accepted"/identity sentinels.
+- **Which word a fresh probe gets.** After the 610.43.03 driver update + warm
+  reboot, getver consistently answers `03 5b fc a4`; on 610.43.02 the same
+  probe answered `01 5a fe a5`. Whether that flip was driver behavior or
+  controller state is unresolved — probes must accept both.
 
 ---
 
