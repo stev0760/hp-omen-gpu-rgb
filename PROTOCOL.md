@@ -131,8 +131,13 @@ segments.** Decompiled `DucatiTriumphLightingControl.RestartLighting` fills
 slots 0..N-1 with the selected theme's color list (HP themes carry 2–3
 colors) and the firmware cycles/waves/blinks/breathes through the enabled
 slots. HP's static path populates **slot 0 only** with `Monochrome=0`.
-Whether static + `Monochrome=0` + multiple enabled slots lights distinct
-sub-ring segments is untested — see §8.
+
+Split-tested 2026-07-18: static + `Monochrome=0` + slot0 green + slot2 blue
+(both enabled, acks accepted) → **solid green**. In static mode the firmware
+reads slot 0 only and ignores the other slots; per-segment static addressing
+does not exist. The diamond is a single logical LED for solid colors — the
+multi-color appearance of the factory look comes entirely from the wave
+animation walking the palette around the ring.
 
 HP's built-in theme palettes (embedded JSON resource
 `ColorCycleTheme.json` in `HP.Omen.Background.TuringBg.dll`):
@@ -259,19 +264,15 @@ bare reads return to `0xff` until the next write-then-read.
 
 ## 8. Open questions
 
-- **Per-zone static addressing.** The four slots are an animation *palette*
-  (see §4); HP's app never sets more than slot 0 in static mode. Whether
-  static + `Monochrome=0` + multiple enabled slots with different colors
-  lights distinct sub-ring segments (i.e. the firmware repurposes the palette
-  spatially, as it does for `Monochrome=0` wave) — or the extra slots are
-  ignored — needs a split-test: `raw 06 81 f9 7e 04 ff 00 00 01 ff 00 00
-  00 00 00 00 01 00 00 ff 00 00 00 00` (slot0 red + slot2 blue).
-- **Animated modes.** Semantics decoded from `DucatiTriumphLightingControl`:
-  palette in slots, speed ∈ {1, 3, 7}, brightness 255, `Monochrome=1`
-  (except rainbow wave). Early tests that sent speed=50 and an all-black or
-  single-color 4-slot palette showed only breathing working — consistent
-  with the decode; visual verification with correct packets is in progress.
-  Whether speed bytes other than 1/3/7 are valid is untested.
+- ~~**Per-zone static addressing.**~~ **Resolved 2026-07-18** — split-test
+  (static, `Monochrome=0`, slot0 green + slot2 blue) produced solid green:
+  static reads slot 0 only, extra slots ignored. No per-segment static
+  addressing exists. See §4.
+- ~~**Animated modes.**~~ **Resolved 2026-07-18** — all six modes
+  hardware-verified with the decoded semantics (palette in slots,
+  speed ∈ {1, 3, 7}, `Monochrome=1` except spatial/rainbow wave).
+  Earlier failures (speed=50, all-black palette) are explained. Whether
+  speed bytes other than 1/3/7 are valid remains untested.
 - **The phantom bus.** One of the GPU's I2C busses (observed at `i2c-7`,
   "NVIDIA i2c adapter 5") ACKs writes at **every** address and echoes junk on
   reads (`77 77 77 77` to the getver probe). Any scanner or detector must
