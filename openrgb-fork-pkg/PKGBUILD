@@ -1,0 +1,35 @@
+# Maintainer: stev0760
+# Local fork build: HP Omen GPU diamond RGB + Patriot Viper Steel legacy detector
+# Rebuild after new commits on the branch: makepkg -sf && sudo pacman -U openrgb-*.pkg.tar.zst
+
+pkgname=openrgb
+pkgver=0.9.2140.g16b0951a
+pkgrel=1
+epoch=1
+pkgdesc="Open source RGB lighting control (stev0760 fork: HP Omen GPU + Patriot Viper Steel fix)"
+arch=('x86_64')
+url="https://gitlab.com/stev0760/OpenRGB"
+license=('GPL-2.0-or-later')
+depends=('hidapi' 'libusb' 'mbedtls' 'qt5-base')
+makedepends=('git' 'qt5-tools')
+# Builds from the local fork clone; set OPENRGB_SRC to its path if not the default
+source=("git+file://${OPENRGB_SRC:-$HOME/Projects/OpenRGB}#branch=hp-omen-gpu-controller")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd OpenRGB
+  printf "0.9.2140.g%s" "$(git rev-parse --short=8 HEAD)"
+}
+
+build() {
+  cd OpenRGB
+  qmake-qt5 PREFIX=/usr OpenRGB.pro
+  make -j"$(nproc)"
+}
+
+package() {
+  cd OpenRGB
+  make INSTALL_ROOT="$pkgdir" install
+  # Arch packaging extra (not in upstream install targets): autoload i2c-dev at boot
+  install -Dm644 /dev/stdin "$pkgdir/usr/lib/modules-load.d/openrgb.conf" <<< "i2c-dev"
+}
